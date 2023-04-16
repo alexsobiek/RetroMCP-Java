@@ -7,7 +7,6 @@ import java.util.*;
 
 import org.mcphackers.mcp.MCP;
 import org.mcphackers.mcp.MCPPaths;
-import org.mcphackers.mcp.tasks.Task.Side;
 import org.mcphackers.mcp.tasks.*;
 
 /**
@@ -27,9 +26,9 @@ public class TaskMode {
 			.setName("decompile")
 			.setTaskClass(TaskDecompile.class)
 			.addRequirement((mcp, side) -> {
-				if(side == Side.MERGED) {
-					return Files.isReadable(MCPPaths.get(mcp, MCPPaths.JAR_ORIGINAL, Side.CLIENT))
-						&& Files.isReadable(MCPPaths.get(mcp, MCPPaths.JAR_ORIGINAL, Side.SERVER));
+				if(side == Task.Side.MERGED) {
+					return Files.isReadable(MCPPaths.get(mcp, MCPPaths.JAR_ORIGINAL, Task.Side.CLIENT))
+						&& Files.isReadable(MCPPaths.get(mcp, MCPPaths.JAR_ORIGINAL, Task.Side.SERVER));
 				}
 				return Files.isReadable(MCPPaths.get(mcp, MCPPaths.JAR_ORIGINAL, side));
 			})
@@ -95,7 +94,7 @@ public class TaskMode {
 			.setName("start")
 			.setTaskClass(TaskRun.class)
 			.setProgressBars(false)
-			.addRequirement((mcp, side) -> Files.isReadable(MCPPaths.get(mcp, MCPPaths.BIN, side)) ||  Files.isReadable(MCPPaths.get(mcp, MCPPaths.BIN, Side.MERGED)))
+			.addRequirement((mcp, side) -> Files.isReadable(MCPPaths.get(mcp, MCPPaths.BIN, side)) ||  Files.isReadable(MCPPaths.get(mcp, MCPPaths.BIN, Task.Side.MERGED)))
 			.setParameters(new TaskParameter[] {
 				TaskParameter.RUN_BUILD
 				})
@@ -195,10 +194,10 @@ public class TaskMode {
 	}
 
 
-	private List<Side> allowedSides() {
-		List<Side> sides = new ArrayList<>();
-		for(Side side : Side.VALUES) {
-			if(side != Side.ANY) {
+	private List<Task.Side> allowedSides() {
+		List<Task.Side> sides = new ArrayList<>();
+		for(Task.Side side : Task.Side.VALUES) {
+			if(side != Task.Side.ANY) {
 				sides.add(side);
 			}
 		}
@@ -215,9 +214,9 @@ public class TaskMode {
 		if(taskClass != null) {
 			Constructor<? extends Task> constructor;
 			try {
-				constructor = taskClass.getConstructor(Side.class, MCP.class);
+				constructor = taskClass.getConstructor(Task.Side.class, MCP.class);
 				try {
-					for(Side side : allowedSides()) {
+					for(Task.Side side : allowedSides()) {
 						tasks.add(constructor.newInstance(side, mcp));
 					}
 				} catch (IllegalAccessException | InvocationTargetException | InstantiationException e) {
@@ -243,10 +242,10 @@ public class TaskMode {
 	 * @param side
 	 * @return availability
 	 */
-	public boolean isAvailable(MCP mcp, Side side) {
+	public boolean isAvailable(MCP mcp, Task.Side side) {
 		if(requirement == null) return true;
-		if(side == Side.ANY) {
-			return requirement.get(mcp, Side.CLIENT) || requirement.get(mcp, Side.SERVER);
+		if(side == Task.Side.ANY) {
+			return requirement.get(mcp, Task.Side.CLIENT) || requirement.get(mcp, Task.Side.SERVER);
 		}
 		else {
 			return requirement.get(mcp, side);
@@ -260,6 +259,6 @@ public class TaskMode {
 		 * @param mcp
 		 * @param side
 		 */
-		boolean get(MCP mcp, Side side);
+		boolean get(MCP mcp, Task.Side side);
 	}
 }

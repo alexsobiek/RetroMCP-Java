@@ -1,11 +1,5 @@
 package org.mcphackers.mcp.tasks;
 
-import static org.mcphackers.mcp.MCPPaths.*;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 import org.mcphackers.mcp.MCP;
 import org.mcphackers.mcp.MCPPaths;
 import org.mcphackers.mcp.tasks.mode.TaskParameter;
@@ -24,183 +18,160 @@ import org.mcphackers.rdi.nio.MappingsIO;
 import org.mcphackers.rdi.nio.RDInjector;
 import org.objectweb.asm.tree.ClassNode;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.mcphackers.mcp.MCPPaths.*;
+import static org.mcphackers.mcp.MCPPaths.PATCHES;
+
 public class TaskDecompile extends TaskStaged {
-	/*
-	 * Indexes of stages for plugin overrides
-	 */
-	public static final int STAGE_INIT = 0;
-	public static final int STAGE_EXCEPTOR = 1;
-	public static final int STAGE_DECOMPILE = 2;
-	public static final int STAGE_PATCH = 3;
-	public static final int STAGE_COPYSRC = 4;
-	public static final int STAGE_MD5 = 5;
+    private int classVersion = -1;
 
-	private int classVersion = -1;
+    public TaskDecompile(MCP mcp, Side side) {
+        super(mcp, side);
+    }
 
-	public TaskDecompile(Side side, MCP instance) {
-		super(side, instance);
-	}
+    @Override
+    protected Stage[] setStages() {
+        final Path rdiOut = MCPPaths.get(mcp, REMAPPED, side);
+        final Path ffOut = MCPPaths.get(mcp, SOURCE_UNPATCHED, side);
+        final Path srcPath = MCPPaths.get(mcp, SOURCE, side);
+        final Path patchesPath = MCPPaths.get(mcp, PATCHES, side);
 
-	public TaskDecompile(Side side, MCP instance, ProgressListener listener) {
-		super(side, instance, listener);
-	}
+        final boolean guessGenerics = mcp.getOptions().getBooleanParameter(TaskParameter.GUESS_GENERICS);
 
-	public static Mappings getMappings(Path mappingsPath, ClassStorage storage, Side side) throws IOException {
-		if(!Files.exists(mappingsPath)) {
-			return null;
-		}
-		boolean joined = MappingUtil.readNamespaces(mappingsPath).contains("official");
-		Mappings mappings = MappingsIO.read(mappingsPath, joined ? "official" : side.name, "named");
-		for(String name : storage.getAllClasses()) {
-			if(name.indexOf('/') == -1 && !mappings.classes.containsKey(name)) {
-				mappings.classes.put(name, "net/minecraft/src/" + name);
-			}
-		}
-		return mappings;
-	}
+        return new Stage[]{
+                new Stage(task(() -> {
+                    ClassStorage storage = applyInjector();
+                    for(ClassNode node : storage) classVersion = Math.max(classVersion, node.version);
+                    return null;
+                }), getLocalizedStage("prepare")),
+                new Stage(task(() -> {
+                    new Decompiler(this, rdiOut, ffOut, mcp.getLibraries(), mcp.getOptions().getStringParameter(TaskParameter.INDENTATION_STRING), guessGenerics).decompile();
+                    new EclipseProjectWriter().createProject(mcp, side, ClassUtils.getSourceFromClassVersion(classVersion));
+                    new IdeaProjectWriter().createProject(mcp, side, ClassUtils.getSourceFromClassVersion(classVersion));
+                    return null;
+                }), getLocalizedStage("decompile")),
+                new Stage(task(() -> {
+                    if(mcp.getOptions().getBooleanParameter(TaskParameter.PATCHES) && Files.exists(patchesPath))
+                        TaskApplyPatch.patch(this, ffOut, ffOut, patchesPath);
+                    return null;
+                }), getLocalizedStage("patch")),
+                new Stage(task(() -> {
+                    if(!mcp.getOptions().getBooleanParameter(TaskParameter.DECOMPILE_RESOURCES)) {
+                        for(Path p : FileUtil.walkDirectory(ffOut, p -> !Files.isDirectory(p) && !p.getFileName().toString().endsWith(".java"))) {
+                            Files.delete(p);
+                        }
+                    }
+                    Files.createDirectories(srcPath);
+                    FileUtil.compress(ffOut, MCPPaths.get(mcp, SOURCE_JAR, side));
+                    if(mcp.getOptions().getBooleanParameter(TaskParameter.OUTPUT_SRC)) {
+                        FileUtil.deletePackages(ffOut, mcp.getOptions().getStringArrayParameter(TaskParameter.IGNORED_PACKAGES));
+                        FileUtil.copyDirectory(ffOut, srcPath);
+                    }
+                    Files.createDirectories(MCPPaths.get(mcp, GAMEDIR, side));
+                    return null;
+                }), getLocalizedStage("copysrc")),
+                new Stage(new TaskUpdateMD5(mcp, side), getLocalizedStage("recompile")),
+        };
+    }
 
-	@Override
-	protected Stage[] setStages() {
-		final Path rdiOut = MCPPaths.get(mcp, REMAPPED, side);
-		final Path ffOut = MCPPaths.get(mcp, SOURCE_UNPATCHED, side);
-		final Path srcPath = MCPPaths.get(mcp, SOURCE, side);
-		final Path patchesPath = MCPPaths.get(mcp, PATCHES, side);
+    public static Mappings getMappings(Path mappingsPath, ClassStorage storage, Task.Side side) throws IOException {
+        if(!Files.exists(mappingsPath)) {
+            return null;
+        }
+        boolean joined = MappingUtil.readNamespaces(mappingsPath).contains("official");
+        Mappings mappings = MappingsIO.read(mappingsPath, joined ? "official" : side.name, "named");
+        for(String name : storage.getAllClasses()) {
+            if(name.indexOf('/') == -1 && !mappings.classes.containsKey(name)) {
+                mappings.classes.put(name, "net/minecraft/src/" + name);
+            }
+        }
+        return mappings;
+    }
 
-		final boolean guessGenerics = mcp.getOptions().getBooleanParameter(TaskParameter.GUESS_GENERICS);
+    public ClassStorage applyInjector() throws IOException {
+        final Path rdiOut = MCPPaths.get(mcp, REMAPPED, side);
+        final Path mappingsPath = MCPPaths.get(mcp, MAPPINGS);
+        final boolean guessGenerics = mcp.getOptions().getBooleanParameter(TaskParameter.GUESS_GENERICS);
+        final boolean stripGenerics = mcp.getOptions().getBooleanParameter(TaskParameter.STRIP_GENERICS);
+        final boolean hasLWJGL = side == Task.Side.CLIENT || side == Task.Side.MERGED;
 
-		return new Stage[] { stage(getLocalizedStage("prepare"), 0, () -> {
-			FileUtil.cleanDirectory(MCPPaths.get(mcp, PROJECT, side));
-			FileUtil.createDirectories(MCPPaths.get(mcp, JARS_DIR, side));
-			FileUtil.createDirectories(MCPPaths.get(mcp, MD5_DIR, side));
-		}), stage(getLocalizedStage("rdi"), 2, () -> {
-			ClassStorage storage = applyInjector();
-			for(ClassNode node : storage) {
-				classVersion = Math.max(classVersion, node.version);
-			}
-		}), stage(getLocalizedStage("decompile"), () -> {
-			new Decompiler(this, rdiOut, ffOut, mcp.getLibraries(), mcp.getOptions().getStringParameter(TaskParameter.INDENTATION_STRING), guessGenerics).decompile();
-			new EclipseProjectWriter().createProject(mcp, side, ClassUtils.getSourceFromClassVersion(classVersion));
-			new IdeaProjectWriter().createProject(mcp, side, ClassUtils.getSourceFromClassVersion(classVersion));
-		}), stage(getLocalizedStage("patch"), 88, () -> {
-			if(mcp.getOptions().getBooleanParameter(TaskParameter.PATCHES) && Files.exists(patchesPath)) {
-				TaskApplyPatch.patch(this, ffOut, ffOut, patchesPath);
-			}
-		}), stage(getLocalizedStage("copysrc"), 90, () -> {
-			if(!mcp.getOptions().getBooleanParameter(TaskParameter.DECOMPILE_RESOURCES)) {
-				for(Path p : FileUtil.walkDirectory(ffOut, p -> !Files.isDirectory(p) && !p.getFileName().toString().endsWith(".java"))) {
-					Files.delete(p);
-				}
-			}
-			Files.createDirectories(srcPath);
-			FileUtil.compress(ffOut, MCPPaths.get(mcp, SOURCE_JAR, side));
-			if(mcp.getOptions().getBooleanParameter(TaskParameter.OUTPUT_SRC)) {
-				FileUtil.deletePackages(ffOut, mcp.getOptions().getStringArrayParameter(TaskParameter.IGNORED_PACKAGES));
-				FileUtil.copyDirectory(ffOut, srcPath);
-			}
-			Files.createDirectories(MCPPaths.get(mcp, GAMEDIR, side));
-		}), stage(getLocalizedStage("recompile"), () -> new TaskUpdateMD5(side, mcp, this).doTask()), };
-	}
+        RDInjector injector = new RDInjector();
+        Path path;
+        Mappings mappings;
 
-	public ClassStorage applyInjector() throws IOException {
-		final Path rdiOut = MCPPaths.get(mcp, REMAPPED, side);
-		final Path mappingsPath = MCPPaths.get(mcp, MAPPINGS);
-		final boolean guessGenerics = mcp.getOptions().getBooleanParameter(TaskParameter.GUESS_GENERICS);
-		final boolean stripGenerics = mcp.getOptions().getBooleanParameter(TaskParameter.STRIP_GENERICS);
-		final boolean hasLWJGL = side == Side.CLIENT || side == Side.MERGED;
+        if(side == Task.Side.MERGED) {
+            path = MCPPaths.get(mcp, JAR_ORIGINAL, Task.Side.SERVER);
+            injector.setStorage(new ClassStorage(IOUtil.readJar(path)));
+            injector.addResources(path);
+            if(stripGenerics) {
+                injector.stripLVT();
+                injector.addTransform(Transform::stripSignatures);
+            }
+            mappings = getMappings(mappingsPath, injector.getStorage(), Task.Side.SERVER);
+            if(mappings != null) {
+                injector.applyMappings(mappings);
+            }
+            injector.transform();
+            ClassStorage serverStorage = injector.getStorage();
 
-		RDInjector injector = new RDInjector();
-		Path path;
-		Mappings mappings;
-
-		if(side == Side.MERGED) {
-			path = MCPPaths.get(mcp, JAR_ORIGINAL, Side.SERVER);
-			injector.setStorage(new ClassStorage(IOUtil.readJar(path)));
-			injector.addResources(path);
-			if(stripGenerics) {
-				injector.stripLVT();
-				injector.addTransform(Transform::stripSignatures);
-			}
-			mappings = getMappings(mappingsPath, injector.getStorage(), Side.SERVER);
-			if(mappings != null) {
-				injector.applyMappings(mappings);
-			}
-			injector.transform();
-			ClassStorage serverStorage = injector.getStorage();
-
-			path = MCPPaths.get(mcp, JAR_ORIGINAL, Side.CLIENT);
-			injector.setStorage(new ClassStorage(IOUtil.readJar(path)));
-			injector.addResources(path);
-			if(stripGenerics) {
-				injector.stripLVT();
-				injector.addTransform(Transform::stripSignatures);
-			}
-			mappings = getMappings(mappingsPath, injector.getStorage(), Side.CLIENT);
-			if(mappings != null) {
-				injector.applyMappings(mappings);
-			}
-			injector.mergeWith(serverStorage);
-		} else {
-			path = MCPPaths.get(mcp, JAR_ORIGINAL, side);
-			injector.setStorage(new ClassStorage(IOUtil.readJar(path)));
-			injector.addResources(path);
-			if(stripGenerics) {
-				injector.stripLVT();
-				injector.addTransform(Transform::stripSignatures);
-			}
-			mappings = getMappings(mappingsPath, injector.getStorage(), side);
-			if(mappings != null) {
-				injector.applyMappings(mappings);
-			}
-		}
-		injector.addTransform(Transform::decomposeVars);
-		injector.addTransform(Transform::replaceCommonConstants);
-		if(hasLWJGL)
-			injector.addVisitor(new GLConstants(null));
-		injector.restoreSourceFile();
-		injector.fixInnerClasses();
-		injector.fixImplicitConstructors();
-		if(guessGenerics)
-			injector.guessGenerics();
-		final Path exc = MCPPaths.get(mcp, EXC);
-		if(Files.exists(exc)) {
-			injector.fixExceptions(exc);
-		}
-		if(side == Side.MERGED) {
-			Path acc = MCPPaths.get(mcp, MCPPaths.ACCESS, Side.CLIENT);
-			if(Files.exists(acc)) {
-				injector.fixAccess(acc);
-			}
-			acc = MCPPaths.get(mcp, MCPPaths.ACCESS, Side.SERVER);
-			if(Files.exists(acc)) {
-				injector.fixAccess(acc);
-			}
-		} else {
-			final Path acc = MCPPaths.get(mcp, MCPPaths.ACCESS, side);
-			if(Files.exists(acc)) {
-				injector.fixAccess(acc);
-			}
-		}
-		injector.transform();
-		injector.write(rdiOut);
-		return injector.getStorage();
-	}
-
-	@Override
-	public void setProgress(int progress) {
-		switch(step) {
-			case STAGE_DECOMPILE: {
-				int percent = (int) (progress * 0.82D);
-				super.setProgress(3 + percent);
-				break;
-			}
-			case STAGE_MD5: {
-				int percent = (int) (progress * 0.04D);
-				super.setProgress(96 + percent);
-				break;
-			}
-			default:
-				super.setProgress(progress);
-				break;
-		}
-	}
+            path = MCPPaths.get(mcp, JAR_ORIGINAL, Task.Side.CLIENT);
+            injector.setStorage(new ClassStorage(IOUtil.readJar(path)));
+            injector.addResources(path);
+            if(stripGenerics) {
+                injector.stripLVT();
+                injector.addTransform(Transform::stripSignatures);
+            }
+            mappings = getMappings(mappingsPath, injector.getStorage(), Task.Side.CLIENT);
+            if(mappings != null) {
+                injector.applyMappings(mappings);
+            }
+            injector.mergeWith(serverStorage);
+        } else {
+            path = MCPPaths.get(mcp, JAR_ORIGINAL, side);
+            injector.setStorage(new ClassStorage(IOUtil.readJar(path)));
+            injector.addResources(path);
+            if(stripGenerics) {
+                injector.stripLVT();
+                injector.addTransform(Transform::stripSignatures);
+            }
+            mappings = getMappings(mappingsPath, injector.getStorage(), side);
+            if(mappings != null) {
+                injector.applyMappings(mappings);
+            }
+        }
+        injector.addTransform(Transform::decomposeVars);
+        injector.addTransform(Transform::replaceCommonConstants);
+        if(hasLWJGL)
+            injector.addVisitor(new GLConstants(null));
+        injector.restoreSourceFile();
+        injector.fixInnerClasses();
+        injector.fixImplicitConstructors();
+        if(guessGenerics)
+            injector.guessGenerics();
+        final Path exc = MCPPaths.get(mcp, EXC);
+        if(Files.exists(exc)) {
+            injector.fixExceptions(exc);
+        }
+        if(side == Task.Side.MERGED) {
+            Path acc = MCPPaths.get(mcp, MCPPaths.ACCESS, Task.Side.CLIENT);
+            if(Files.exists(acc)) {
+                injector.fixAccess(acc);
+            }
+            acc = MCPPaths.get(mcp, MCPPaths.ACCESS, Task.Side.SERVER);
+            if(Files.exists(acc)) {
+                injector.fixAccess(acc);
+            }
+        } else {
+            final Path acc = MCPPaths.get(mcp, MCPPaths.ACCESS, side);
+            if(Files.exists(acc)) {
+                injector.fixAccess(acc);
+            }
+        }
+        injector.transform();
+        injector.write(rdiOut);
+        return injector.getStorage();
+    }
 }

@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import org.mcphackers.mcp.tasks.ProgressListener;
+import org.mcphackers.mcp.tasks.helper.TaskProgressProducer;
 
 import de.fernflower.main.decompiler.BaseDecompiler;
 import de.fernflower.main.decompiler.DirectoryResultSaver;
@@ -25,7 +25,7 @@ public class Decompiler implements IBytecodeProvider {
 	private final Path destination;
 	private final Map<String, Object> mapOptions = new HashMap<>();
 
-	public Decompiler(ProgressListener listener, Path source, Path out, List<Path> libs, String ind, boolean guessGenerics) {
+	public Decompiler(TaskProgressProducer listener, Path source, Path out, List<Path> libs, String ind, boolean guessGenerics) {
 		this.source = source;
 		this.libraries = libs;
 		this.destination = out;

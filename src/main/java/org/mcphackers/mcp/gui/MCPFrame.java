@@ -283,8 +283,8 @@ public class MCPFrame extends JFrame implements WindowListener {
 		progressLabels = new JLabel[size];
 		for (int i = 0; i < size; i++) {
 			String name = mode.getFullName();
-			if(tasks.get(i).side != Side.ANY) {
-				name = tasks.get(i).side.getName();
+			if(tasks.get(i).getSide() != Side.ANY) {
+				name = tasks.get(i).getSide().getName();
 			}
 			progressBars[i] = new SideProgressBar();
 			progressLabels[i] = new JLabel(name + ":", SwingConstants.TRAILING);

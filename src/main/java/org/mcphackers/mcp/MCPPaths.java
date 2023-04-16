@@ -1,8 +1,8 @@
 package org.mcphackers.mcp;
 
-import java.nio.file.Path;
+import org.mcphackers.mcp.tasks.Task;
 
-import org.mcphackers.mcp.tasks.Task.Side;
+import java.nio.file.Path;
 
 public class MCPPaths {
 
@@ -44,9 +44,9 @@ public class MCPPaths {
 
 	public static final String UPDATE_JAR =		 	 "update.jar";
 
-	public static Path get(MCP mcp, String path, Side side) {
+	public static Path get(MCP mcp, String path, Task.Side side) {
 		String newPath = path;
-		if(side == Side.CLIENT) {
+		if(side == Task.Side.CLIENT) {
 			newPath = path.replace("minecraft_%s", "minecraft");
 		}
 		return get(mcp, String.format(newPath, side.name));

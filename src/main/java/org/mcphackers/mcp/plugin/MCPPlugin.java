@@ -28,7 +28,6 @@ public interface MCPPlugin {
 
 	/**
 	 * Called whenever an instance of TaskStaged starts execution.
-	 * Use {@link TaskStaged#overrideStage(int, org.mcphackers.mcp.tasks.TaskRunnable)}
 	 * to replace one of the stages.
 	 * @param task the task with stages to override
 	 */

@@ -42,7 +42,7 @@ public class DownloadData {
 	private Path gameDir;
 	public int totalSize;
 	public List<DownloadEntry> natives = new ArrayList<>();
-	
+
 	public DownloadData(MCP mcp, Version version) {
 		this(MCPPaths.get(mcp, MCPPaths.LIB), MCPPaths.get(mcp, MCPPaths.JARS), MCPPaths.get(mcp, MCPPaths.JAR_ORIGINAL, Side.CLIENT), MCPPaths.get(mcp, MCPPaths.JAR_ORIGINAL, Side.SERVER), version);
 	}

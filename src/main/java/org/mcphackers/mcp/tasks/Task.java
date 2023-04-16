@@ -1,123 +1,152 @@
 package org.mcphackers.mcp.tasks;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.mcphackers.mcp.plugin.MCPPlugin.TaskEvent;
 import org.mcphackers.mcp.MCP;
+import org.mcphackers.mcp.tasks.helper.TaskListener;
+import org.mcphackers.mcp.tasks.helper.TaskLog;
+import org.mcphackers.mcp.tasks.helper.TaskProgress;
+import org.mcphackers.mcp.tasks.helper.TaskProgressProducer;
+import org.mcphackers.mcp.plugin.MCPPlugin;
 
-public abstract class Task implements ProgressListener, TaskRunnable {
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.logging.Level;
 
-	public enum Side {
-		ANY(-1, "any"),
-		CLIENT(0, "client"),
-		SERVER(1, "server"),
-		MERGED(2, "merged");
+public abstract class Task implements TaskProgressProducer, Runnable {
+    public static final byte INFO = 0;          // TODO: replace
+    public static final byte WARNING = 1;       // TODO: replace
+    public static final byte ERROR = 2;         // TODO: replace
 
-		public static final Side[] ALL = {CLIENT, SERVER, MERGED};
-		public static final Side[] VALUES = Side.values();
+    protected final MCP mcp;
+    protected final Side side;
+    private final UUID id = UUID.randomUUID();
+    private State state = State.NOT_STARTED;
+    private Optional<TaskListener> listener;
+    private final List<TaskLog> logs = new ArrayList<>();
+    private final TaskProgress progress = new TaskProgress();
+    public Task(MCP mcp, Side side) {
+        this.mcp = mcp;
+        this.side = side;
+    }
+    public Task(MCP mcp) {
+        this(mcp, Side.ANY);
+    }
 
-		public final int index;
-		public final String name;
+    public Task setListener(TaskListener listener) {
+        this.listener = Optional.of(listener);
+        listener.onStateChange(state); // update this listeners state
+        return this;
+    }
 
-		Side(int index, String name) {
-			this.index = index;
-			this.name = name;
-			sides.put(index, this);
-		}
+    protected boolean updateDialogue(String changelog, String version) {
+        return listener.map(l -> l.onUpdateDialogue(changelog, version)).orElse(false);
+    }
 
-		public String getName() {
-			return MCP.TRANSLATOR.translateKey("side." + name);
-		}
-	}
+    protected String promptInput(String title, String message) {
+        return listener.map(l -> l.onPromptInput(title, message)).orElse(null);
+    }
 
-	public static final Map<Integer, Side> sides = new HashMap<>();
+    protected void updateProgress(TaskProgress progress) {
+        listener.ifPresent(l -> l.onProgress(progress));
+    }
 
-	public static final byte INFO = 0;
-	public static final byte WARNING = 1;
-	public static final byte ERROR = 2;
+    public void updateProgress(String message) {
+        progress.message(message);
+        updateProgress(progress);
+    }
 
-	public final Side side;
-	protected final MCP mcp;
-	private byte result = INFO;
-	private ProgressListener progressListener;
-	private int progressBarIndex = -1;
-	private final List<String> logMessages = new ArrayList<>();
+    public void updateProgress(int progress) {
+        this.progress.progress(progress);
+        updateProgress(this.progress);
+    }
 
-	public Task(Side side, MCP instance, ProgressListener listener) {
-		this(side, instance);
-		this.progressListener = listener;
-	}
+    protected int getProgress() {
+        return progress.progress();
+    }
 
-	public Task(Side side, MCP instance) {
-		this.side = side;
-		this.mcp = instance;
-	}
+    protected String getProgressMessage() {
+        return progress.message();
+    }
 
-	public Task(MCP instance) {
-		this(Side.ANY, instance);
-	}
+    public void updateProgress(String message, int progress) {
+        this.progress.message(message);
+        this.progress.progress(progress);
+        updateProgress(this.progress);
+    }
 
-	public final void performTask() throws Exception {
-		triggerEvent(TaskEvent.PRE_TASK);
-		doTask();
-		triggerEvent(TaskEvent.POST_TASK);
-	}
+    protected void callEvent(MCPPlugin.TaskEvent event) {
+        listener.ifPresent(l -> l.onEvent(event));
+    }
 
-	protected final void triggerEvent(TaskEvent event) {
-		mcp.triggerTaskEvent(event, this);
-	}
+    protected void log(String message, Level level) {
+        TaskLog log = new TaskLog(message, level);
+        logs.add(log);
+        listener.ifPresent(l -> l.onLog(log));
+    }
 
-	protected final void addMessage(String msg, byte logLevel) {
-		if(progressListener != null) {
-			if(progressListener instanceof Task) {
-				Task task = (Task)progressListener;
-				task.addMessage(msg, logLevel);
-			}
-		}
-		logMessages.add(msg);
-		result = logLevel < result ? result : logLevel;
-	}
+    protected final String getLocalizedStage(String stage, Object... formatting) {
+        return MCP.TRANSLATOR.translateKeyWithFormatting("task.stage." + stage, formatting);
+    }
 
-	public final byte getResult() {
-		return result;
-	}
+    @Override
+    public void run() {
+        if (state != State.NOT_STARTED)
+            throw new IllegalStateException("Task is not in NOT_STARTED state"); // TODO: localize
+        setState(State.RUNNING);
+        try {
+            this.doTask();
+        } catch (Exception e) {
+            setState(State.FAILED);
+            log(e.getMessage(), Level.SEVERE);
+        }
+    }
 
-	public final List<String> getMessageList() {
-		return logMessages;
-	}
+    protected abstract void doTask() throws Exception;
 
-	@Override
-	public void setProgress(String progressString) {
-		if(progressListener != null) {
-			progressListener.setProgress(progressString);
-		}
-		else if(progressBarIndex >= 0) {
-			mcp.setProgress(progressBarIndex, progressString);
-		}
-	}
+    public Side getSide() {
+        return side;
+    }
 
-	@Override
-	public void setProgress(int progress) {
-		if(progressListener != null) {
-			progressListener.setProgress(progress);
-		}
-		else if(progressBarIndex >= 0) {
-			mcp.setProgress(progressBarIndex, progress);
-		}
-	}
+    public State getState() {
+        return state;
+    }
 
-	public void log(String msg) {
-		mcp.log(msg);
-	}
+    protected void setState(State state) {
+        this.state = state;
+        listener.ifPresent(l -> l.onStateChange(state));
+    }
 
-	public void setProgressBarIndex(int i) {
-		progressBarIndex = i;
-	}
+    public UUID getId() {
+        return id;
+    }
 
-	public final String getLocalizedStage(String stage, Object... formatting) {
-		return MCP.TRANSLATOR.translateKeyWithFormatting("task.stage." + stage, formatting);
-	}
+    public enum Side {
+        ANY(-1, "any"),
+        CLIENT(0, "client"),
+        SERVER(1, "server"),
+        MERGED(2, "merged");
+
+        public static final Side[] ALL = {CLIENT, SERVER, MERGED};
+        public static final Side[] VALUES = Side.values();
+
+        public final int index;
+        public final String name;
+
+        Side(int index, String name) {
+            this.index = index;
+            this.name = name;
+        }
+
+        public String getName() {
+            return MCP.TRANSLATOR.translateKey("side." + name);
+        }
+    }
+
+    public enum State {
+        NOT_STARTED,
+        RUNNING,
+        COMPLETED,
+        FAILED
+    }
 }

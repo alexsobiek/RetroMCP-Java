@@ -32,7 +32,7 @@ public class TaskButton extends JButton {
 	}
 
 	public static ActionListener performTask(MCP mcp, TaskMode mode) {
-		return event -> operateOnThread(() -> mcp.performTask(mode, mcp.getOptions().side));
+		return event -> operateOnThread(() -> mcp.performTasks(mode, mcp.getOptions().side));
 	}
 
 	public boolean getEnabled() {

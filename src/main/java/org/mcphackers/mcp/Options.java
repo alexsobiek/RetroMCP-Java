@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import org.mcphackers.mcp.tasks.Task.Side;
+import org.mcphackers.mcp.tasks.Task;
 import org.mcphackers.mcp.tasks.mode.TaskParameter;
 import org.mcphackers.mcp.tasks.mode.TaskParameterMap;
 import org.mcphackers.mcp.tools.Util;
@@ -18,7 +18,7 @@ public class Options {
 
 	private final Map<TaskParameter, Object> options = new HashMap<>();
 	public Path saveFile;
-	public Side side = Side.ANY;
+	public Task.Side side = Task.Side.ANY;
 	public Language lang;
 	public Theme theme;
 
@@ -45,7 +45,7 @@ public class Options {
 					String value = line.substring(sep + 1);
 					if(key.equals(TaskParameter.SIDE.name)) {
 						try {
-							side = Side.valueOf(value);
+							side = Task.Side.valueOf(value);
 						} catch (IllegalArgumentException ignored) {}
 					}
 					else if(key.equals("lang")) {
@@ -86,7 +86,7 @@ public class Options {
 	}
 
 	public void resetDefaults() {
-		side = Side.ANY;
+		side = Task.Side.ANY;
 		for(TaskParameter param : TaskParameter.VALUES) {
 			setDefault(param);
 		}
@@ -97,7 +97,7 @@ public class Options {
 		Object value;
 		switch (param) {
 		case SIDE:
-			side = Side.ANY;
+			side = Task.Side.ANY;
 			value = side.index;
 			break;
 		default:

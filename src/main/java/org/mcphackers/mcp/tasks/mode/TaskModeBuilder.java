@@ -1,7 +1,6 @@
 package org.mcphackers.mcp.tasks.mode;
 
 import org.mcphackers.mcp.tasks.Task;
-import org.mcphackers.mcp.tasks.mode.TaskMode.Requirement;
 
 public class TaskModeBuilder {
 
@@ -9,7 +8,7 @@ public class TaskModeBuilder {
 	private boolean usesProgressBars = true;
 	private Class<? extends Task> taskClass;
 	private TaskParameter[] params = new TaskParameter[] {};
-	private Requirement requirement;
+	private TaskMode.Requirement requirement;
 
 	public TaskModeBuilder setName(String name) {
 		this.name = name;
@@ -31,7 +30,7 @@ public class TaskModeBuilder {
 		return this;
 	}
 
-	public TaskModeBuilder addRequirement(Requirement condition) {
+	public TaskModeBuilder addRequirement(TaskMode.Requirement condition) {
 		this.requirement = condition;
 		return this;
 	}

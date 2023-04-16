@@ -1,80 +1,60 @@
 package org.mcphackers.mcp.tasks;
 
 import org.mcphackers.mcp.MCP;
-import org.mcphackers.mcp.plugin.MCPPlugin.TaskEvent;
+
+import java.util.Arrays;
+import java.util.concurrent.Callable;
 
 public abstract class TaskStaged extends Task {
+    private final Stage[] stages;
 
-	public int step;
-	public Stage[] stages;
+    public TaskStaged(MCP mcp, Side side) {
+        super(mcp, side);
+        this.stages = setStages();
+    }
 
-	public TaskStaged(Side side, MCP instance, ProgressListener listener) {
-		super(side, instance, listener);
-	}
+    protected Task task(Callable<Void> task) {
+        return new Task(this.mcp, this.side) {
+            @Override
+            protected void doTask() throws Exception {
+                task.call();
+            }
+        };
+    }
 
-	public TaskStaged(Side side, MCP instance) {
-		super(side, instance);
-	}
+    @Override
+    protected void doTask() throws Exception {
+        // Calculate percentages for each stage
+        double notCounted = Arrays.stream(stages).filter(s -> s.percentage < 0.0D).count();
+        double percentage = 1.0D / notCounted;
 
-	public TaskStaged(MCP instance) {
-		super(instance);
-	}
+        for (Stage stage : stages) {
+            if (stage.percentage < 0.0D) stage.percentage = percentage;
+            int progress = getProgress() + (int) (stage.percentage * 100D); // TODO: check this
+            updateProgress(stage.name, progress);
+            stage.task.run();
+        }
+    }
 
-	protected final void step() {
-		step++;
-		triggerEvent(TaskEvent.TASK_STEP);
-	}
+    protected abstract Stage[] setStages();
 
-	protected abstract Stage[] setStages();
+    protected static class Stage {
+        protected final Task task;
+        protected final String name;
+        protected double percentage;
 
-	@Override
-	public void doTask() throws Exception {
-		stages = setStages();
-		mcp.setPluginOverrides(this);
-		while(step < stages.length) {
-			setProgress(stages[step].stageName, stages[step].completion);
-			stages[step].doTask();
-			step();
-		}
-	}
+        protected Stage(Task task, String name, double percentage) {
+            this.task = task;
+            this.name = name;
+            this.percentage = percentage;
+        }
 
-	/**
-	 * Replaces stage operation at <code>stageIndex</code> with <code>task</code>
-	 * @param stageIndex
-	 * @param task
-	 */
-	public void overrideStage(int stageIndex, TaskRunnable task) {
-		if(stageIndex < stages.length) {
-			stages[stageIndex].setOperation(task);
-		}
-	}
+        protected Stage(Task task, String name) {
+            this(task, name, -1.0D);
+        }
 
-	public Stage stage(String name, int percentage, TaskRunnable task) {
-		return new Stage(name, percentage, task);
-	}
-
-	public Stage stage(String name, TaskRunnable task) {
-		return new Stage(name, -1, task);
-	}
-
-	public static class Stage {
-		private TaskRunnable runnable;
-		private final String stageName;
-		private final int completion;
-
-		public Stage(String name, int i, TaskRunnable task) {
-			setOperation(task);
-			stageName = name;
-			completion = i;
-		}
-
-		private void setOperation(TaskRunnable task) {
-			runnable = task;
-		}
-
-		private void doTask() throws Exception {
-			runnable.doTask();
-		}
-	}
-
+        protected Stage(Task task) {
+            this(task, task.getClass().getSimpleName(), -1.0D);
+        }
+    }
 }

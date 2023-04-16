@@ -1,16 +1,16 @@
 package org.mcphackers.mcp.tools.fernflower;
 
 import org.mcphackers.mcp.MCP;
-import org.mcphackers.mcp.tasks.ProgressListener;
+import org.mcphackers.mcp.tasks.helper.TaskProgressProducer;
 
 import de.fernflower.main.extern.IFernflowerLogger;
 
 public class DecompileLogger extends IFernflowerLogger {
 
-	private final ProgressListener listener;
+	private final TaskProgressProducer listener;
 	private int total;
 
-	public DecompileLogger(ProgressListener listener) {
+	public DecompileLogger(TaskProgressProducer listener) {
 		this.listener = listener;
 	}
 
@@ -29,7 +29,7 @@ public class DecompileLogger extends IFernflowerLogger {
 
 	@Override
 	public void startReadingClass(String className) {
-		listener.setProgress(MCP.TRANSLATOR.translateKey("task.stage.decompile") + " " + className);
+		listener.updateProgress(MCP.TRANSLATOR.translateKey("task.stage.decompile") + " " + className);
 	}
 
 	@Override
@@ -39,7 +39,7 @@ public class DecompileLogger extends IFernflowerLogger {
 
 	@Override
 	public void updateSave(int current) {
-		listener.setProgress((int)((double)current/(double)total * 100));
+		listener.updateProgress((int)((double)current/(double)total * 100));
 	}
 
 }

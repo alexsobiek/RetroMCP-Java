@@ -54,14 +54,14 @@ public class MenuBar extends JMenuBar {
 		initOptions();
 		JMenuItem update = new JMenuItem();
 		translatableComponents.put(update, "mcp.checkUpdate");
-		update.addActionListener(a -> operateOnThread(() -> mcp.performTask(TaskMode.UPDATE_MCP, Side.ANY, false)));
+		update.addActionListener(a -> operateOnThread(() -> mcp.performTasks(TaskMode.UPDATE_MCP, Side.ANY)));
 		Side[] sides = {Side.CLIENT, Side.SERVER};
 		for(Side side : sides) {
 			JMenuItem start = new JMenuItem();
 			translatableComponents.put(start, side == Side.CLIENT ? "mcp.startClient" : "mcp.startServer");
 			togglableComponents.add(start);
 			start.addActionListener(a -> operateOnThread(() -> {
-                mcp.performTask(TaskMode.START, side, false);
+                mcp.performTasks(TaskMode.START, side);
                 reloadSide();
             }));
 			mcpMenu.add(start);

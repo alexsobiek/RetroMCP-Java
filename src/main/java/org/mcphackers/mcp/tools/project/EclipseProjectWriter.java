@@ -11,7 +11,6 @@ import java.util.Random;
 import org.mcphackers.mcp.MCP;
 import org.mcphackers.mcp.MCPPaths;
 import org.mcphackers.mcp.tasks.Task;
-import org.mcphackers.mcp.tasks.Task.Side;
 import org.mcphackers.mcp.tasks.TaskRun;
 import org.mcphackers.mcp.tools.Util;
 import org.mcphackers.mcp.tools.versions.json.DependDownload;
@@ -21,7 +20,7 @@ import org.mcphackers.mcp.tools.versions.json.Version;
 public class EclipseProjectWriter implements ProjectWriter {
 
 	@Override
-	public void createProject(MCP mcp, Side side, int sourceVersion) throws IOException {
+	public void createProject(MCP mcp, Task.Side side, int sourceVersion) throws IOException {
 		Path proj = MCPPaths.get(mcp, PROJECT, side);
 		Version version = mcp.getCurrentVersion();
 		String clientArgs = ProjectWriter.getLaunchArgs(mcp, side);
