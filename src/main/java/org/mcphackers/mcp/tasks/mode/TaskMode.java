@@ -214,10 +214,10 @@ public class TaskMode {
 		if(taskClass != null) {
 			Constructor<? extends Task> constructor;
 			try {
-				constructor = taskClass.getConstructor(Task.Side.class, MCP.class);
+				constructor = taskClass.getConstructor(MCP.class, Task.Side.class);
 				try {
 					for(Task.Side side : allowedSides()) {
-						tasks.add(constructor.newInstance(side, mcp));
+						tasks.add(constructor.newInstance(mcp, side));
 					}
 				} catch (IllegalAccessException | InvocationTargetException | InstantiationException e) {
 					e.printStackTrace();
