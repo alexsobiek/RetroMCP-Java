@@ -27,7 +27,7 @@ public class TaskExecutor implements ExecutorService {
     }
 
     public TaskExecutor(ExecutorService pool, List<Task> tasks) {
-        this.pool = null;
+        this.pool = pool;
         this.tasks.addAll(tasks);
     }
 
